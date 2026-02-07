@@ -39,6 +39,21 @@ interface OpenPositionParams {
   coinTypeB: string;
 }
 
+interface AddLiquidityFixTokenParams {
+  pool_id: string;
+  pos_id: string;
+  tick_lower: number;
+  tick_upper: number;
+  amount_a: string;
+  amount_b: string;
+  fix_amount_a: boolean;
+  is_open: boolean;
+  coinTypeA: string;
+  coinTypeB: string;
+  collect_fee: boolean;
+  rewarder_coin_types: string[];
+}
+
 export class RebalanceService {
   private sdkService: CetusSDKService;
   private monitorService: PositionMonitorService;
@@ -131,7 +146,8 @@ export class RebalanceService {
       }
 
       // Check if position has liquidity before trying to remove
-      const hasLiquidity = position.liquidity && BigInt(position.liquidity) > 0n;
+      // Explicitly handle null/undefined and check for non-zero liquidity
+      const hasLiquidity = position.liquidity != null && BigInt(position.liquidity) > 0n;
       
       if (hasLiquidity) {
         // Try to remove liquidity from old position
@@ -401,7 +417,7 @@ export class RebalanceService {
         
         // Use the SDK's fix token method which automatically calculates liquidity
         // This will fix amount A and automatically calculate the required amount B
-        const addLiquidityParams = {
+        const addLiquidityParams: AddLiquidityFixTokenParams = {
           pool_id: poolInfo.poolAddress,
           pos_id: positionId,
           tick_lower: tickLower,
@@ -422,7 +438,7 @@ export class RebalanceService {
         
         // Use createAddLiquidityFixTokenPayload which handles liquidity calculation
         const addLiquidityPayload = await sdk.Position.createAddLiquidityFixTokenPayload(
-          addLiquidityParams as any,
+          addLiquidityParams as any, // SDK types may not match exactly, but our interface ensures correctness
           {
             slippage: this.config.maxSlippage,
             curSqrtPrice: currentSqrtPrice,
