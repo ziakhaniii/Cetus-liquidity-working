@@ -1,5 +1,5 @@
-import { SuiClient } from '@mysten/sui.js/client';
-import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
+import { SuiClient } from '@mysten/sui/client';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { CetusClmmSDK, initCetusSDK } from '@cetusprotocol/cetus-sui-clmm-sdk';
 import { BotConfig } from '../config';
 import { logger } from '../utils/logger';

@@ -228,8 +228,8 @@ export class RebalanceService {
 
       // Sign and execute the transaction
       logger.info('Executing remove liquidity transaction');
-      const result = await suiClient.signAndExecuteTransactionBlock({
-        transactionBlock: removeLiquidityPayload,
+      const result = await suiClient.signAndExecuteTransaction({
+        transaction: removeLiquidityPayload,
         signer: keypair,
         options: {
           showEffects: true,
@@ -342,8 +342,8 @@ export class RebalanceService {
 
       // First, open the position
       logger.info('Opening position...');
-      const openResult = await suiClient.signAndExecuteTransactionBlock({
-        transactionBlock: openPositionPayload,
+      const openResult = await suiClient.signAndExecuteTransaction({
+        transaction: openPositionPayload,
         signer: keypair,
         options: {
           showEffects: true,
