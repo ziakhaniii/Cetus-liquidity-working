@@ -1,0 +1,79 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                 CETUS LIQUIDITY REBALANCE BOT - GETTING STARTED              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+🎉 Welcome! Your automatic liquidity rebalance bot is ready.
+
+📚 START HERE:
+═══════════════
+1. Read QUICKSTART.md for a 5-minute setup guide
+2. Read README.md for comprehensive documentation
+3. Read SDK_IMPLEMENTATION.md to add Cetus SDK configuration
+
+📋 SETUP STEPS:
+════════════════
+Step 1: Install Dependencies
+   $ npm install
+
+Step 2: Configure Environment
+   $ cp .env.example .env
+   $ nano .env
+   
+   Required settings:
+   - PRIVATE_KEY=your_64_char_hex_key
+   - POOL_ADDRESS=0x...
+
+Step 3: Add SDK Configuration
+   Follow SDK_IMPLEMENTATION.md to add Cetus contract addresses
+
+Step 4: Build
+   $ npm run build
+
+Step 5: Test on Testnet First!
+   Set NETWORK=testnet in .env
+   $ npm start
+
+Step 6: Deploy to Production
+   Follow DEPLOYMENT.md for production deployment options
+
+📖 DOCUMENTATION:
+═══════════════════
+README.md              - Main documentation & overview
+QUICKSTART.md          - 5-minute quick start guide
+CONFIGURATION.md       - Detailed configuration options
+DEPLOYMENT.md          - Production deployment guide
+SDK_IMPLEMENTATION.md  - SDK integration instructions
+PROJECT_SUMMARY.md     - Complete project overview
+
+⚠️  IMPORTANT:
+═══════════════
+- Test on TESTNET first!
+- Start with SMALL amounts
+- Never commit your .env file
+- Use a DEDICATED wallet
+- Monitor the first rebalances
+
+🔒 SECURITY:
+══════════════
+✓ Keep your private key secure
+✓ Never share your .env file
+✓ Use environment-specific wallets
+✓ Review all documentation
+
+💡 NEED HELP?
+══════════════
+1. Check the relevant documentation file
+2. Review error messages in logs
+3. Verify your configuration
+4. Open an issue on GitHub
+
+🚀 QUICK COMMANDS:
+════════════════════
+npm install       - Install dependencies
+npm run build     - Build TypeScript
+npm run dev       - Run in development mode
+npm start         - Run in production mode
+npm run clean     - Clean build artifacts
+
+✅ You're all set! Follow the steps above to get started.
+
