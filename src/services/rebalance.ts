@@ -439,6 +439,84 @@ export class RebalanceService {
     throw lastError || new Error(`All retry attempts failed for ${operationName} with unknown error`);
   }
 
+  /**
+   * Swap tokens within the pool.  Used to convert a single-sided token balance
+   * into both tokens so that liquidity can be added to an in-range position.
+   */
+  private async performSwap(
+    poolInfo: PoolInfo,
+    aToB: boolean,
+    amount: string,
+  ): Promise<void> {
+    const sdk = this.sdkService.getSdk();
+    const keypair = this.sdkService.getKeypair();
+    const suiClient = this.sdkService.getSuiClient();
+
+    logger.info('Executing swap', {
+      direction: aToB ? 'A→B' : 'B→A',
+      amount,
+      pool: poolInfo.poolAddress,
+    });
+
+    // Compute a minimum output using preswap to protect against slippage.
+    // If the estimate fails we fall back to accepting any output.
+    let amountLimit = '0';
+    try {
+      const pool = await sdk.Pool.getPool(poolInfo.poolAddress);
+      const [metaA, metaB] = await Promise.all([
+        suiClient.getCoinMetadata({ coinType: poolInfo.coinTypeA }),
+        suiClient.getCoinMetadata({ coinType: poolInfo.coinTypeB }),
+      ]);
+      const preswapResult = await sdk.Swap.preswap({
+        pool,
+        currentSqrtPrice: Number(pool.current_sqrt_price),
+        decimalsA: metaA?.decimals ?? 9,
+        decimalsB: metaB?.decimals ?? 9,
+        a2b: aToB,
+        byAmountIn: true,
+        amount,
+        coinTypeA: poolInfo.coinTypeA,
+        coinTypeB: poolInfo.coinTypeB,
+      });
+      if (preswapResult && preswapResult.estimatedAmountOut) {
+        const estimated = BigInt(preswapResult.estimatedAmountOut);
+        const slippageBps = BigInt(Math.floor(this.config.maxSlippage * 10000));
+        const minOutput = estimated - (estimated * slippageBps) / 10000n;
+        amountLimit = (minOutput > 0n ? minOutput : 0n).toString();
+        logger.info('Swap slippage limit calculated', {
+          estimatedOut: estimated.toString(),
+          amountLimit,
+        });
+      }
+    } catch (e) {
+      logger.debug('Could not estimate swap output - proceeding without slippage limit');
+    }
+
+    const swapPayload = await sdk.Swap.createSwapTransactionPayload({
+      pool_id: poolInfo.poolAddress,
+      a2b: aToB,
+      by_amount_in: true,
+      amount,
+      amount_limit: amountLimit,
+      coinTypeA: poolInfo.coinTypeA,
+      coinTypeB: poolInfo.coinTypeB,
+    });
+
+    const result = await suiClient.signAndExecuteTransaction({
+      transaction: swapPayload,
+      signer: keypair,
+      options: { showEffects: true },
+    });
+
+    if (result.effects?.status?.status !== 'success') {
+      throw new Error(
+        `Swap failed: ${result.effects?.status?.error || 'Unknown error'}`,
+      );
+    }
+
+    logger.info('Swap completed', { digest: result.digest });
+  }
+
   private async addLiquidity(
     poolInfo: PoolInfo,
     tickLower: number,
@@ -519,6 +597,66 @@ export class RebalanceService {
         amountB = this.config.tokenBAmount || String(safeBalanceB > 0n ? safeBalanceB / 10n : defaultMinAmount);
       }
 
+      // When one token has zero balance (common after removing an out-of-range
+      // position that was fully single-sided), swap approximately half of the
+      // available token so that both tokens are non-zero.  An in-range position
+      // requires non-zero amounts of both tokens; without this step the Cetus
+      // Move contract aborts with error 0 in repay_add_liquidity.
+      {
+        const preSwapA = BigInt(amountA);
+        const preSwapB = BigInt(amountB);
+        const oneIsZero =
+          (preSwapA === 0n && preSwapB > 0n) ||
+          (preSwapA > 0n && preSwapB === 0n);
+
+        if (oneIsZero) {
+          const hasOnlyA = preSwapA > 0n;
+          const swapAmount = (hasOnlyA ? preSwapA : preSwapB) / 2n;
+
+          if (swapAmount > 0n) {
+            logger.info(
+              'One token has zero balance - swapping to obtain both tokens',
+              { direction: hasOnlyA ? 'A→B' : 'B→A', swapAmount: swapAmount.toString() },
+            );
+
+            try {
+              await this.performSwap(poolInfo, hasOnlyA, swapAmount.toString());
+
+              // Re-fetch wallet balances after swap
+              const postSwapBalA = await suiClient.getBalance({
+                owner: ownerAddress,
+                coinType: poolInfo.coinTypeA,
+              });
+              const postSwapBalB = await suiClient.getBalance({
+                owner: ownerAddress,
+                coinType: poolInfo.coinTypeB,
+              });
+
+              const postBigA = BigInt(postSwapBalA.totalBalance);
+              const postBigB = BigInt(postSwapBalB.totalBalance);
+              const newSafeA =
+                isSuiA && postBigA > SUI_GAS_RESERVE
+                  ? postBigA - SUI_GAS_RESERVE
+                  : postBigA;
+              const newSafeB =
+                isSuiB && postBigB > SUI_GAS_RESERVE
+                  ? postBigB - SUI_GAS_RESERVE
+                  : postBigB;
+
+              amountA = (newSafeA > 0n ? newSafeA : 0n).toString();
+              amountB = (newSafeB > 0n ? newSafeB : 0n).toString();
+
+              logger.info('Balances after swap', { amountA, amountB });
+            } catch (swapError) {
+              const swapMsg = swapError instanceof Error ? swapError.message : String(swapError);
+              logger.warn(
+                `Swap failed (${swapMsg}) - will attempt add liquidity with available amounts`,
+              );
+            }
+          }
+        }
+      }
+
       // Validate amounts
       try {
         const amountABigInt = BigInt(amountA);
@@ -531,7 +669,8 @@ export class RebalanceService {
             throw new Error('No tokens available for rebalancing. Wallet has insufficient balance of both tokens.');
           }
           if (amountABigInt === 0n || amountBBigInt === 0n) {
-            logger.warn('Only one token has available balance for rebalancing. A swap may be needed for optimal results.');
+            logger.warn('One token still has zero balance after swap attempt. ' +
+              'The add liquidity transaction will likely fail. Consider manually providing both tokens.');
           }
         } else {
           if (amountABigInt === 0n || amountBBigInt === 0n) {
