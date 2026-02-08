@@ -1,5 +1,5 @@
 import { CetusSDKService } from './sdk';
-import { PositionMonitorService, PoolInfo } from './monitor';
+import { PositionMonitorService, PoolInfo, PositionInfo } from './monitor';
 import { BotConfig } from '../config';
 import { logger } from '../utils/logger';
 import BN from 'bn.js';
@@ -143,10 +143,13 @@ export class RebalanceService {
         liquidity: position.liquidity,
       });
 
-      // Calculate optimal range
+      // Calculate optimal range, preserving the old position's range width
+      // so that the new position uses the same parameters.
+      const oldRangeWidth = position.tickUpper - position.tickLower;
       const { lower, upper } = this.monitorService.calculateOptimalRange(
         poolInfo.currentTickIndex,
-        poolInfo.tickSpacing
+        poolInfo.tickSpacing,
+        oldRangeWidth
       );
 
       // If range hasn't changed significantly, skip rebalance
@@ -800,14 +803,56 @@ export class RebalanceService {
 
   async checkAndRebalance(poolAddress: string): Promise<RebalanceResult | null> {
     try {
-      const monitorResult = await this.monitorService.monitorPosition(poolAddress);
+      // Fetch current pool state and all positions for this pool
+      const poolInfo = await this.monitorService.getPoolInfo(poolAddress);
+      const ownerAddress = this.sdkService.getAddress();
+      const allPositions = await this.monitorService.getPositions(ownerAddress);
+      const poolPositions = allPositions.filter(p => p.poolAddress === poolAddress);
 
-      if (!monitorResult.needsRebalance) {
-        logger.info('Position is optimal - no rebalance needed');
+      if (poolPositions.length === 0) {
+        logger.info('No existing positions found in pool - will create new position');
+        return await this.rebalancePosition(poolAddress);
+      }
+
+      // Check each position: in-range positions are left untouched, out-of-range
+      // positions are candidates for rebalancing.
+      const inRangePositions: PositionInfo[] = [];
+      const outOfRangePositions: PositionInfo[] = [];
+
+      for (const pos of poolPositions) {
+        const isInRange = this.monitorService.isPositionInRange(
+          pos.tickLower,
+          pos.tickUpper,
+          poolInfo.currentTickIndex,
+        );
+
+        if (isInRange) {
+          logger.info(
+            `Position ${pos.positionId} is in range [${pos.tickLower}, ${pos.tickUpper}] ` +
+            `at tick ${poolInfo.currentTickIndex} — no action needed`,
+          );
+          inRangePositions.push(pos);
+        } else {
+          logger.info(
+            `Position ${pos.positionId} is OUT of range [${pos.tickLower}, ${pos.tickUpper}] ` +
+            `at tick ${poolInfo.currentTickIndex} — rebalance needed`,
+          );
+          outOfRangePositions.push(pos);
+        }
+      }
+
+      if (outOfRangePositions.length === 0) {
+        logger.info('All positions are in range — no rebalance needed');
         return null;
       }
 
-      logger.info('Position needs rebalancing - executing rebalance');
+      logger.info(
+        `${outOfRangePositions.length} out-of-range position(s) and ` +
+        `${inRangePositions.length} in-range position(s) — proceeding with rebalance`,
+      );
+
+      // Rebalance: create new position with same parameters at new active range
+      // or rebalance existing position to the new active range.
       return await this.rebalancePosition(poolAddress);
     } catch (error) {
       logger.error('Check and rebalance failed', error);

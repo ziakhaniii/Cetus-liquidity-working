@@ -156,12 +156,15 @@ export class PositionMonitorService {
     return false;
   }
 
-  calculateOptimalRange(currentTick: number, tickSpacing: number): { lower: number; upper: number } {
-    if (this.config.rangeWidth) {
-      // When an explicit range width is configured, center it around current tick
-      const rangeWidth = this.config.rangeWidth;
-      const ticksBelow = Math.floor(rangeWidth / 2);
-      const ticksAbove = Math.ceil(rangeWidth / 2);
+  calculateOptimalRange(currentTick: number, tickSpacing: number, preserveRangeWidth?: number): { lower: number; upper: number } {
+    // Use the provided preserveRangeWidth (e.g. from the old position) when
+    // available, otherwise fall back to the configured rangeWidth.
+    const rangeWidth = preserveRangeWidth || this.config.rangeWidth;
+    if (rangeWidth) {
+      // When a range width is provided, center it around current tick
+      const effectiveRangeWidth = rangeWidth;
+      const ticksBelow = Math.floor(effectiveRangeWidth / 2);
+      const ticksAbove = Math.ceil(effectiveRangeWidth / 2);
 
       // Align to tick spacing
       const lower = Math.floor((currentTick - ticksBelow) / tickSpacing) * tickSpacing;
