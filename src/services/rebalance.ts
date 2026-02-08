@@ -204,8 +204,8 @@ export class RebalanceService {
       // Check if an existing position already covers the optimal range
       const existingInRangePosition = poolPositions.find(p =>
         p.positionId !== position.positionId &&
-        Math.abs(p.tickLower - lower) < poolInfo.tickSpacing &&
-        Math.abs(p.tickUpper - upper) < poolInfo.tickSpacing
+        p.tickLower === lower &&
+        p.tickUpper === upper
       );
 
       if (existingInRangePosition) {
@@ -465,6 +465,7 @@ export class RebalanceService {
       }
 
       let positionId: string;
+      let openPositionDigest: string | undefined;
 
       if (existingPositionId) {
         // Use existing position instead of creating a new one
@@ -542,6 +543,7 @@ export class RebalanceService {
 
         // Extract the position ID (validated above)
         positionId = positionObject.objectId as string;
+        openPositionDigest = openResult.digest;
         logger.info('Position NFT created', { positionId });
       }
 
@@ -618,7 +620,7 @@ export class RebalanceService {
         logger.error('Failed to add liquidity to position', addError);
         logger.warn('Position is open but has no liquidity. You may need to add liquidity manually.');
         return {
-          transactionDigest: undefined,
+          transactionDigest: openPositionDigest,
         };
       }
     } catch (error) {
