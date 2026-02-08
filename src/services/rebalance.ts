@@ -486,8 +486,11 @@ export class RebalanceService {
       // Reserve gas when a token is SUI so the add-liquidity transaction
       // does not try to spend the entire balance and fail with balance::split.
       const SUI_GAS_RESERVE = BigInt(this.config.gasBudget); // e.g. 0.1 SUI
-      const isSuiA = poolInfo.coinTypeA === '0x2::sui::SUI' || poolInfo.coinTypeA.endsWith('::sui::SUI');
-      const isSuiB = poolInfo.coinTypeB === '0x2::sui::SUI' || poolInfo.coinTypeB.endsWith('::sui::SUI');
+      const SUI_TYPE = '0x2::sui::SUI';
+      const SUI_TYPE_FULL = '0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI';
+      const isSuiCoinType = (ct: string) => ct === SUI_TYPE || ct === SUI_TYPE_FULL;
+      const isSuiA = isSuiCoinType(poolInfo.coinTypeA);
+      const isSuiB = isSuiCoinType(poolInfo.coinTypeB);
       const safeBalanceA = isSuiA && balanceABigInt > SUI_GAS_RESERVE
         ? balanceABigInt - SUI_GAS_RESERVE
         : balanceABigInt;
