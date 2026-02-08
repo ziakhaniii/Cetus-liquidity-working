@@ -162,9 +162,8 @@ export class PositionMonitorService {
     const rangeWidth = preserveRangeWidth || this.config.rangeWidth;
     if (rangeWidth) {
       // When a range width is provided, center it around current tick
-      const effectiveRangeWidth = rangeWidth;
-      const ticksBelow = Math.floor(effectiveRangeWidth / 2);
-      const ticksAbove = Math.ceil(effectiveRangeWidth / 2);
+      const ticksBelow = Math.floor(rangeWidth / 2);
+      const ticksAbove = Math.ceil(rangeWidth / 2);
 
       // Align to tick spacing
       const lower = Math.floor((currentTick - ticksBelow) / tickSpacing) * tickSpacing;
