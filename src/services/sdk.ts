@@ -12,6 +12,7 @@ export class CetusSDKService {
   private suiClient: SuiClient;
   private keypair: Ed25519Keypair;
   private config: BotConfig;
+  private rpcUrl: string;
 
   constructor(config: BotConfig) {
     this.config = config;
@@ -19,6 +20,7 @@ export class CetusSDKService {
     // Validate configuration before initializing
     this.validateConfig(config);
     
+    this.rpcUrl = config.suiRpcUrl || this.getDefaultRpcUrl(config.network);
     this.keypair = this.initializeKeypair(config.privateKey);
     this.suiClient = this.initializeSuiClient(config);
     this.sdk = this.initializeSDK(config);
@@ -66,9 +68,8 @@ export class CetusSDKService {
   }
 
   private initializeSuiClient(config: BotConfig): SuiClient {
-    const rpcUrl = config.suiRpcUrl || this.getDefaultRpcUrl(config.network);
-    logger.info(`Initializing Sui client with RPC: ${rpcUrl}`);
-    return new SuiClient({ url: rpcUrl });
+    logger.info(`Initializing Sui client with RPC: ${this.rpcUrl}`);
+    return new SuiClient({ url: this.rpcUrl });
   }
 
   private getDefaultRpcUrl(network: 'mainnet' | 'testnet'): string {
@@ -86,12 +87,11 @@ export class CetusSDKService {
       logger.info(`Initializing Cetus SDK for ${config.network}`);
       
       const address = this.keypair.getPublicKey().toSuiAddress();
-      const rpcUrl = config.suiRpcUrl || this.getDefaultRpcUrl(config.network);
       
       // Use the official initCetusSDK helper which includes the latest package addresses
       const sdk = initCetusSDK({
         network: config.network,
-        fullNodeUrl: rpcUrl,
+        fullNodeUrl: this.rpcUrl,
         wallet: address,
       });
       
@@ -101,7 +101,7 @@ export class CetusSDKService {
       logger.info(`Cetus SDK initialized successfully`, {
         network: config.network,
         address,
-        rpcUrl,
+        rpcUrl: this.rpcUrl,
       });
       
       return sdk;
@@ -125,6 +125,10 @@ export class CetusSDKService {
 
   getAddress(): string {
     return this.keypair.getPublicKey().toSuiAddress();
+  }
+
+  getRpcUrl(): string {
+    return this.rpcUrl;
   }
 
   async getBalance(coinType: string): Promise<string> {
