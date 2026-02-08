@@ -3,6 +3,7 @@ import { PositionMonitorService } from './services/monitor';
 import { RebalanceService } from './services/rebalance';
 import { config } from './config';
 import { logger } from './utils/logger';
+import { retryWithBackoff } from './utils/retry';
 
 export class CetusRebalanceBot {
   private sdkService: CetusSDKService;
@@ -10,53 +11,6 @@ export class CetusRebalanceBot {
   private rebalanceService: RebalanceService;
   private isRunning: boolean = false;
   private intervalId?: NodeJS.Timeout;
-
-  /**
-   * Retry a network operation with exponential backoff.
-   */
-  private async retryWithBackoff<T>(
-    operation: () => Promise<T>,
-    operationName: string,
-    maxRetries: number = 3,
-    initialDelayMs: number = 2000
-  ): Promise<T> {
-    let lastError: Error | undefined;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        if (attempt > 0) {
-          const delay = initialDelayMs * Math.pow(2, attempt - 1);
-          logger.info(`Retry ${attempt}/${maxRetries} for ${operationName} after ${delay}ms`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-        return await operation();
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        lastError = error instanceof Error ? error : new Error(msg);
-
-        const isNetwork = this.isNetworkError(msg);
-        if (!isNetwork) {
-          throw error;
-        }
-
-        if (attempt < maxRetries) {
-          logger.warn(`Network error in ${operationName} (attempt ${attempt + 1}/${maxRetries + 1}): ${msg}`);
-        }
-      }
-    }
-
-    throw lastError;
-  }
-
-  private isNetworkError(message: string): boolean {
-    const patterns = [
-      'fetch', 'network', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT',
-      'ENOTFOUND', 'timeout', 'socket hang up', 'EAI_AGAIN',
-      'EHOSTUNREACH', 'EPIPE', 'request to', 'getaddrinfo',
-    ];
-    const lower = message.toLowerCase();
-    return patterns.some(p => lower.includes(p.toLowerCase()));
-  }
 
   constructor() {
     logger.info('Initializing Cetus Rebalance Bot...');
@@ -115,7 +69,7 @@ export class CetusRebalanceBot {
       
       // Get SUI balance with retries
       try {
-        const balance = await this.retryWithBackoff(
+        const balance = await retryWithBackoff(
           () => suiClient.getBalance({
             owner: address,
             coinType: '0x2::sui::SUI',

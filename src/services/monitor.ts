@@ -1,6 +1,7 @@
 import { CetusSDKService } from './sdk';
 import { BotConfig } from '../config';
 import { logger } from '../utils/logger';
+import { retryWithBackoff, isNetworkError } from '../utils/retry';
 import BN from 'bn.js';
 
 export interface PositionInfo {
@@ -32,62 +33,12 @@ export class PositionMonitorService {
     this.config = config;
   }
 
-  /**
-   * Retry a network operation with exponential backoff.
-   */
-  private async retryWithBackoff<T>(
-    operation: () => Promise<T>,
-    operationName: string,
-    maxRetries: number = 3,
-    initialDelayMs: number = 2000
-  ): Promise<T> {
-    let lastError: Error | undefined;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        if (attempt > 0) {
-          const delay = initialDelayMs * Math.pow(2, attempt - 1);
-          logger.info(`Retry ${attempt}/${maxRetries} for ${operationName} after ${delay}ms`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-        return await operation();
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        lastError = error instanceof Error ? error : new Error(msg);
-
-        if (!this.isNetworkError(msg)) {
-          // Non-network error — do not retry
-          throw error;
-        }
-
-        if (attempt < maxRetries) {
-          logger.warn(`Network error in ${operationName} (attempt ${attempt + 1}/${maxRetries + 1}): ${msg}`);
-        }
-      }
-    }
-
-    throw lastError;
-  }
-
-  /**
-   * Determine whether an error message indicates a transient network issue.
-   */
-  private isNetworkError(message: string): boolean {
-    const patterns = [
-      'fetch', 'network', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT',
-      'ENOTFOUND', 'timeout', 'socket hang up', 'EAI_AGAIN',
-      'EHOSTUNREACH', 'EPIPE', 'request to', 'getaddrinfo',
-    ];
-    const lower = message.toLowerCase();
-    return patterns.some(p => lower.includes(p.toLowerCase()));
-  }
-
   async getPoolInfo(poolAddress: string): Promise<PoolInfo> {
     try {
       logger.debug(`Fetching pool info for: ${poolAddress}`);
       const sdk = this.sdkService.getSdk();
 
-      const pool = await this.retryWithBackoff(
+      const pool = await retryWithBackoff(
         () => sdk.Pool.getPool(poolAddress),
         'getPoolInfo',
       );
@@ -124,10 +75,8 @@ export class PositionMonitorService {
   1. The pool address is correct
   2. You're connected to the right network (mainnet/testnet)
   3. The pool exists on Cetus: https://app.cetus.zone/`);
-      } else if (this.isNetworkError(errorMessage)) {
-        const rpcUrl = typeof this.sdkService.getRpcUrl === 'function'
-          ? this.sdkService.getRpcUrl()
-          : (this.config.suiRpcUrl || 'default');
+      } else if (isNetworkError(errorMessage)) {
+        const rpcUrl = this.sdkService.getRpcUrl();
         logger.error(`Network error while fetching pool info. Please check:
   1. Your internet connection
   2. The RPC endpoint is accessible: ${rpcUrl}

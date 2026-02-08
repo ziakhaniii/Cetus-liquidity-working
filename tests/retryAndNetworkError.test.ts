@@ -1,54 +1,14 @@
 import assert from 'assert';
-import { PositionMonitorService } from '../src/services/monitor';
-import { BotConfig } from '../src/config';
+import { isNetworkError, retryWithBackoff } from '../src/utils/retry';
 
 /**
- * Tests for PositionMonitorService retry logic and network error detection.
+ * Tests for retry logic and network error detection.
  * Run with: npx ts-node tests/retryAndNetworkError.test.ts
  */
-
-const STUB_PRIVATE_KEY = 'a'.repeat(64);
-const STUB_POOL_ADDRESS = '0x' + '0'.repeat(64);
-
-function buildService(overrides: Partial<BotConfig> = {}): PositionMonitorService {
-  const config: BotConfig = {
-    network: 'mainnet',
-    privateKey: STUB_PRIVATE_KEY,
-    checkInterval: 300,
-    rebalanceThreshold: 0.05,
-    poolAddress: STUB_POOL_ADDRESS,
-    maxSlippage: 0.01,
-    gasBudget: 100_000_000,
-    logLevel: 'error',
-    verboseLogs: false,
-    ...overrides,
-  };
-  const sdkStub = {
-    getRpcUrl: () => 'https://test-rpc.example.com',
-  } as any;
-  return new PositionMonitorService(sdkStub, config);
-}
-
-// Access the private methods via bracket notation for testing
-function isNetworkError(svc: PositionMonitorService, msg: string): boolean {
-  return (svc as any).isNetworkError(msg);
-}
-
-async function retryWithBackoff<T>(
-  svc: PositionMonitorService,
-  operation: () => Promise<T>,
-  name: string,
-  maxRetries: number = 3,
-  delay: number = 10
-): Promise<T> {
-  return (svc as any).retryWithBackoff(operation, name, maxRetries, delay);
-}
 
 // ── isNetworkError detects transient network issues ─────────────────────
 
 {
-  const svc = buildService();
-
   // Should detect as network errors
   const networkMessages = [
     'fetch failed',
@@ -68,7 +28,7 @@ async function retryWithBackoff<T>(
   ];
 
   for (const msg of networkMessages) {
-    assert.strictEqual(isNetworkError(svc, msg), true, `should detect as network error: "${msg}"`);
+    assert.strictEqual(isNetworkError(msg), true, `should detect as network error: "${msg}"`);
   }
   console.log('✔ isNetworkError detects transient network errors');
 
@@ -81,7 +41,7 @@ async function retryWithBackoff<T>(
   ];
 
   for (const msg of nonNetworkMessages) {
-    assert.strictEqual(isNetworkError(svc, msg), false, `should NOT detect as network error: "${msg}"`);
+    assert.strictEqual(isNetworkError(msg), false, `should NOT detect as network error: "${msg}"`);
   }
   console.log('✔ isNetworkError does not false-positive on non-network errors');
 }
@@ -90,10 +50,9 @@ async function retryWithBackoff<T>(
 
 async function runAsyncTests() {
   {
-    const svc = buildService();
     let callCount = 0;
 
-    const result = await retryWithBackoff(svc, async () => {
+    const result = await retryWithBackoff(async () => {
       callCount++;
       return 'success';
     }, 'test-immediate', 3, 10);
@@ -106,10 +65,9 @@ async function runAsyncTests() {
   // ── retryWithBackoff retries on network error and eventually succeeds ───
 
   {
-    const svc = buildService();
     let callCount = 0;
 
-    const result = await retryWithBackoff(svc, async () => {
+    const result = await retryWithBackoff(async () => {
       callCount++;
       if (callCount < 3) {
         throw new Error('fetch failed');
@@ -125,11 +83,10 @@ async function runAsyncTests() {
   // ── retryWithBackoff does NOT retry non-network errors ──────────────────
 
   {
-    const svc = buildService();
     let callCount = 0;
 
     try {
-      await retryWithBackoff(svc, async () => {
+      await retryWithBackoff(async () => {
         callCount++;
         throw new Error('Pool not found: 0x123');
       }, 'test-no-retry', 3, 10);
@@ -144,11 +101,10 @@ async function runAsyncTests() {
   // ── retryWithBackoff throws after max retries ───────────────────────────
 
   {
-    const svc = buildService();
     let callCount = 0;
 
     try {
-      await retryWithBackoff(svc, async () => {
+      await retryWithBackoff(async () => {
         callCount++;
         throw new Error('ETIMEDOUT');
       }, 'test-exhaust', 2, 10);
