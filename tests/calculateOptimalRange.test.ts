@@ -8,21 +8,25 @@ import { BotConfig } from '../src/config';
  */
 
 // Minimal stubs – only the config fields that calculateOptimalRange reads are needed.
+const STUB_PRIVATE_KEY = 'a'.repeat(64); // fake key for test config only
+const STUB_POOL_ADDRESS = '0x' + '0'.repeat(64); // 32-byte Sui address
+
 function buildService(overrides: Partial<BotConfig> = {}): PositionMonitorService {
   const config: BotConfig = {
     network: 'mainnet',
-    privateKey: '0'.repeat(64),
+    privateKey: STUB_PRIVATE_KEY,
     checkInterval: 300,
     rebalanceThreshold: 0.05,
-    poolAddress: '0x' + '0'.repeat(64),
+    poolAddress: STUB_POOL_ADDRESS,
     maxSlippage: 0.01,
     gasBudget: 100_000_000,
     logLevel: 'error',
     verboseLogs: false,
     ...overrides,
   };
-  // sdkService is unused by calculateOptimalRange, so pass null
-  return new PositionMonitorService(null as any, config);
+  // sdkService is not used by calculateOptimalRange so we pass a stub
+  const sdkStub = {} as InstanceType<typeof import('../src/services/sdk').CetusSDKService>;
+  return new PositionMonitorService(sdkStub, config);
 }
 
 // ── Tightest-range default (no rangeWidth configured) ───────────────────
