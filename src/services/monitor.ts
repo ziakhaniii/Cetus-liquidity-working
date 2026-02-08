@@ -1,6 +1,7 @@
 import { CetusSDKService } from './sdk';
 import { BotConfig } from '../config';
 import { logger } from '../utils/logger';
+import { retryWithBackoff, isNetworkError } from '../utils/retry';
 import BN from 'bn.js';
 
 export interface PositionInfo {
@@ -36,7 +37,11 @@ export class PositionMonitorService {
     try {
       logger.debug(`Fetching pool info for: ${poolAddress}`);
       const sdk = this.sdkService.getSdk();
-      const pool = await sdk.Pool.getPool(poolAddress);
+
+      const pool = await retryWithBackoff(
+        () => sdk.Pool.getPool(poolAddress),
+        'getPoolInfo',
+      );
 
       if (!pool) {
         throw new Error(`Pool not found: ${poolAddress}. Please verify the pool address exists on ${this.config.network}.`);
@@ -70,10 +75,11 @@ export class PositionMonitorService {
   1. The pool address is correct
   2. You're connected to the right network (mainnet/testnet)
   3. The pool exists on Cetus: https://app.cetus.zone/`);
-      } else if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('ECONNREFUSED')) {
+      } else if (isNetworkError(errorMessage)) {
+        const rpcUrl = this.sdkService.getRpcUrl();
         logger.error(`Network error while fetching pool info. Please check:
   1. Your internet connection
-  2. The RPC endpoint is accessible: ${this.config.suiRpcUrl || 'default'}
+  2. The RPC endpoint is accessible: ${rpcUrl}
   3. Try setting a custom SUI_RPC_URL in .env if using default`);
       } else {
         logger.error('Failed to get pool info', {

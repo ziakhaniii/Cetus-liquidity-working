@@ -3,6 +3,7 @@ import { PositionMonitorService } from './services/monitor';
 import { RebalanceService } from './services/rebalance';
 import { config } from './config';
 import { logger } from './utils/logger';
+import { retryWithBackoff } from './utils/retry';
 
 export class CetusRebalanceBot {
   private sdkService: CetusSDKService;
@@ -66,12 +67,15 @@ export class CetusRebalanceBot {
 
       const suiClient = this.sdkService.getSuiClient();
       
-      // Get SUI balance
+      // Get SUI balance with retries
       try {
-        const balance = await suiClient.getBalance({
-          owner: address,
-          coinType: '0x2::sui::SUI',
-        });
+        const balance = await retryWithBackoff(
+          () => suiClient.getBalance({
+            owner: address,
+            coinType: '0x2::sui::SUI',
+          }),
+          'getBalance',
+        );
         const suiBalance = parseFloat(balance.totalBalance) / 1_000_000_000; // Convert MIST to SUI
         logger.info(`Wallet SUI balance: ${suiBalance.toFixed(4)} SUI`);
         
@@ -79,7 +83,7 @@ export class CetusRebalanceBot {
           logger.warn(`Low SUI balance (${suiBalance.toFixed(4)} SUI). You may not have enough for gas fees.`);
         }
       } catch (error) {
-        logger.warn('Could not fetch wallet balance', error);
+        logger.warn('Could not fetch wallet balance after retries. Continuing anyway...', error);
       }
 
       // Validate pool exists
