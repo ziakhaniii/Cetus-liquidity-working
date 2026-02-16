@@ -150,7 +150,7 @@ async function runTests() {
     const missingAmountA = requiredA - currentBalanceA;
     assert.strictEqual(missingAmountA.toString(), '1000000', 'Should calculate correct missing amount');
     
-    // Calculate swap amount with 10% buffer
+    // Calculate swap amount with 10% buffer (matching implementation in calculateSwapAmountWithBuffer)
     const swapAmount = (missingAmountA * 110n) / 100n;
     assert.strictEqual(swapAmount.toString(), '1100000', 'Should add 10% buffer to swap amount');
     

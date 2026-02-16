@@ -581,11 +581,9 @@ export class RebalanceService {
         requiredB: requiredB.toString(),
       });
       
-      // Determine which token is insufficient and calculate missing amount
+      // Determine which token is insufficient
       const isTokenAInsufficient = currentBalanceA < requiredA;
       const isTokenBInsufficient = currentBalanceB < requiredB;
-      const missingAmountA = isTokenAInsufficient ? requiredA - currentBalanceA : 0n;
-      const missingAmountB = isTokenBInsufficient ? requiredB - currentBalanceB : 0n;
       
       // If neither token appears insufficient, log and return
       if (!isTokenAInsufficient && !isTokenBInsufficient) {
@@ -595,6 +593,7 @@ export class RebalanceService {
       
       // Perform swap to acquire the missing token
       if (isTokenAInsufficient) {
+        const missingAmountA = requiredA - currentBalanceA;
         logger.info(`Insufficient balance detected for Token A`, {
           required: requiredA.toString(),
           current: currentBalanceA.toString(),
@@ -612,6 +611,7 @@ export class RebalanceService {
           throw new Error(`Insufficient Token B balance to swap for missing Token A. Need ${swapAmount.toString()}, have ${currentBalanceB.toString()}`);
         }
       } else if (isTokenBInsufficient) {
+        const missingAmountB = requiredB - currentBalanceB;
         logger.info(`Insufficient balance detected for Token B`, {
           required: requiredB.toString(),
           current: currentBalanceB.toString(),
@@ -1006,13 +1006,13 @@ export class RebalanceService {
               
               // Re-fetch pool state after swap
               const poolAfterSwap = await sdk.Pool.getPool(poolInfo.poolAddress);
-              const currentSqrtPriceAfterSwap = new BN(poolAfterSwap.current_sqrt_price);
+              const currentSqrtPrice = new BN(poolAfterSwap.current_sqrt_price);
               
               const retryPayload = await sdk.Position.createAddLiquidityFixTokenPayload(
                 addLiquidityParams as any,
                 {
                   slippage: this.config.maxSlippage,
-                  curSqrtPrice: currentSqrtPriceAfterSwap,
+                  curSqrtPrice: currentSqrtPrice,
                 }
               );
               
